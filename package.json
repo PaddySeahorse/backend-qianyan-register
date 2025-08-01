@@ -1,0 +1,12 @@
+{
+  "name": "qianyan-register",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers Signup Proxy",
+  "main": "src/signup.js",
+  "scripts": {
+    "deploy": "wrangler publish --config ./workers/signup.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^4.27.0"
+  },
+}
