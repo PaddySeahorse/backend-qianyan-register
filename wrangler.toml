@@ -1,0 +1,8 @@
+name = "qianyan-register"
+main = "src/index.ts"
+compatibility_date = "2024-07-30"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "qianyan-register"
+database_id = "400a78d2-2104-42e6-ad44-8f0397f723cd"
