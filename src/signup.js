@@ -1,54 +1,42 @@
-import { Client } from 'https://cdn.skypack.dev/pg';
+import { hash } from 'bcryptjs';
+
+export interface Env {
+  DB: D1Database;
+}
 
 export default {
-  async fetch(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
-    }
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
 
-    if (request.method === 'POST' && new URL(request.url).pathname === '/register') {
+    if (request.method === 'POST' && url.pathname === '/signup') {
       try {
-        const body = await request.json();
-        const { email, password } = body;
+        const { email, password } = await request.json();
 
         if (!email || !password) {
-          return new Response(JSON.stringify({ error: '缺少字段' }), {
+          return new Response(JSON.stringify({ error: '邮箱和密码不能为空' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            headers: { 'Content-Type': 'application/json' },
           });
         }
 
-        const client = new Client({
-          connectionString: env.DATABASE_URL,
-          ssl: { rejectUnauthorized: false },
-        });
+        const hashedPassword = await hash(password, 10);
 
-        await client.connect();
-        await client.query(
-          'INSERT INTO users (email, password) VALUES ($1, $2)',
-          [email, password]
-        );
-        await client.end();
+        await env.DB.prepare(
+          `INSERT INTO users (email, password) VALUES (?, ?)`
+        ).bind(email, hashedPassword).run();
 
         return new Response(JSON.stringify({ message: '注册成功' }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          headers: { 'Content-Type': 'application/json' },
         });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: '注册失败', details: err.message }), {
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          headers: { 'Content-Type': 'application/json' },
         });
       }
     }
 
     return new Response('Not Found', { status: 404 });
-  }
-}
+  },
+};
