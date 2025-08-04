@@ -2,20 +2,17 @@ export interface Env {
   DB: D1Database;
 }
 
-// 辅助函数：将 ArrayBuffer 转换为十六进制字符串
 function bufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
-// 密码哈希函数
 async function hashPassword(password: string): Promise<{ salt: string; hash: string }> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(password);
   
-  // 导入密钥
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     passwordBuffer,
@@ -24,7 +21,6 @@ async function hashPassword(password: string): Promise<{ salt: string; hash: str
     ['deriveBits']
   );
   
-  // 使用 PBKDF2 算法派生密钥
   const derivedKey = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
@@ -42,103 +38,141 @@ async function hashPassword(password: string): Promise<{ salt: string; hash: str
   };
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400'
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    
-    // ================= 安全保护层 =================
-    // 请求大小限制 (10KB)
-    const contentLength = request.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 1024 * 10) {
-      return new Response(JSON.stringify({ error: '请求过大' }), {
-        status: 413,
-        headers: { 'Content-Type': 'application/json' },
+
+    // 处理OPTIONS预检请求
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: CORS_HEADERS
       });
     }
-    
-    // ================= 路由处理 =================
-    // 只处理 /signup 路径
+
+    // 请求大小限制
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 1024 * 10) {
+      return new Response('request too large', {
+        status: 413,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'text/plain'
+        }
+      });
+    }
+
+    // 只处理/signup路径
     if (url.pathname === '/signup') {
-      // 只允许 POST 方法
+      // 只允许POST方法
       if (request.method !== 'POST') {
-        return new Response('Method Not Allowed', {
+        return new Response('method not allowed', {
           status: 405,
-          headers: { 'Allow': 'POST' }
+          headers: {
+            ...CORS_HEADERS,
+            'Allow': 'POST',
+            'Content-Type': 'text/plain'
+          }
         });
       }
-      
+
       try {
-        // 安全JSON解析
         let data: any;
         try {
           data = await request.json();
         } catch (e) {
-          return new Response(JSON.stringify({ error: '无效请求格式' }), {
+          return new Response('invalid request format', {
             status: 400,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
           });
         }
-        
+
         const { email, password } = data;
-        
-        // 空值检查 (返回403且不提供详细信息)
+
+        // 空值检查返回纯文本forbidden
         if (!email || !password) {
-          return new Response(JSON.stringify({ error: '注册失败' }), {
+          return new Response('forbidden', {
             status: 403,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
           });
         }
-        
-        // 检查邮箱是否已被注册
+
+        // 检查邮箱是否已注册
         const existingUser = await env.DB.prepare(
           `SELECT 1 FROM users WHERE email = ? LIMIT 1`
         ).bind(email).first();
 
         if (existingUser) {
-          return new Response(JSON.stringify({ error: '该邮箱已被注册' }), {
+          return new Response('email already exists', {
             status: 409,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
           });
         }
-        
+
         // 密码哈希处理
         const { salt, hash } = await hashPassword(password);
-        
+
         // 存储到数据库
         const result = await env.DB.prepare(
           `INSERT INTO users (email, salt, password) VALUES (?, ?, ?)`
         ).bind(email, salt, hash).run();
-        
-        // 检查插入操作
+
         if (!result.success) {
-          throw new Error('D1数据库插入失败');
+          throw new Error('database insert failed');
         }
-        
-        return new Response(JSON.stringify({ message: '注册成功' }), {
+
+        return new Response('registration success', {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'text/plain'
+          }
         });
       } catch (err: any) {
-        // 错误日志记录
-        console.error(`注册错误: ${err.message}`, { stack: err.stack });
-        
-        // 处理唯一约束错误
+        console.error(`signup error: ${err.message}`, { stack: err.stack });
+
         if (err.message.includes('UNIQUE constraint failed')) {
-          return new Response(JSON.stringify({ error: '该邮箱已被注册' }), {
+          return new Response('email already exists', {
             status: 409,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
           });
         }
-        
-        // 其他错误返回500
-        return new Response(JSON.stringify({ error: '服务器错误' }), {
+
+        return new Response('server error', {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'text/plain'
+          }
         });
       }
     }
-    
-    // 非/signup路径返回404
-    return new Response('Not Found', { status: 404 });
-  },
+
+    // 非/signup路径
+    return new Response('not found', {
+      status: 404,
+      headers: {
+        ...CORS_HEADERS,
+        'Content-Type': 'text/plain'
+      }
+    });
+  }
 };
