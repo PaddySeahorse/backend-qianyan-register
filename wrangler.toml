@@ -2,7 +2,8 @@ name = "qianyan-register"
 main = "src/signup.ts"
 compatibility_date = "2024-07-30"
 
-node_compat = true  # 启用Node.js兼容模式
+# 替换弃用的 node_compat 参数
+compatibility_flags = [ "nodejs_compat" ]
 
 [[d1_databases]]
 binding = "DB"
