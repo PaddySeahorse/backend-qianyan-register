@@ -109,16 +109,28 @@ export default {
           });
         }
 
-        // 邮箱规范化
-        const normalizedEmail = email.toLowerCase().trim();
+        // 添加邮箱格式验证
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return new Response('invalid email format', {
+            status: 400,
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
+          });
+        }
+
+        // 邮箱标准化为小写
+        const cleanEmail = email.toLowerCase().trim();
 
         // 检查邮箱是否已注册
         const existingUser = await env.DB.prepare(
           `SELECT 1 FROM users WHERE email = ? LIMIT 1`
-        ).bind(normalizedEmail).first();
+        ).bind(cleanEmail).first();
 
         if (existingUser) {
-          return new Response('registration failed', {
+          return new Response('email already exists', {
             status: 409,
             headers: {
               ...CORS_HEADERS,
@@ -133,7 +145,7 @@ export default {
         // 存储到数据库
         const result = await env.DB.prepare(
           `INSERT INTO users (email, salt, password) VALUES (?, ?, ?)`
-        ).bind(normalizedEmail, salt, hash).run();
+        ).bind(cleanEmail, salt, hash).run();
 
         if (!result.success) {
           throw new Error('database insert failed');
@@ -149,13 +161,29 @@ export default {
       } catch (err: any) {
         console.error(`signup error: ${err.message}`, { stack: err.stack });
 
-        // 错误信息脱敏
-        const message = err.message.includes('UNIQUE constraint failed')
-          ? 'registration failed'
-          : 'internal server error';
+        // 扩充错误处理
+        if (err.message.includes('invalid email format')) {
+          return new Response('invalid email format', {
+            status: 400,
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
+          });
+        }
+        
+        if (err.message.includes('UNIQUE constraint failed')) {
+          return new Response('email already exists', {
+            status: 409,
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'text/plain'
+            }
+          });
+        }
 
-        return new Response(message, {
-          status: err.message.includes('UNIQUE constraint failed') ? 409 : 500,
+        return new Response('server error', {
+          status: 500,
           headers: {
             ...CORS_HEADERS,
             'Content-Type': 'text/plain'
