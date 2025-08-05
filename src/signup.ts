@@ -98,7 +98,7 @@ export default {
 
         const { email, password } = data;
 
-        // 空值检查返回纯文本forbidden
+        // 空值检查
         if (!email || !password) {
           return new Response('forbidden', {
             status: 403,
@@ -109,13 +109,16 @@ export default {
           });
         }
 
+        // 邮箱规范化
+        const normalizedEmail = email.toLowerCase().trim();
+
         // 检查邮箱是否已注册
         const existingUser = await env.DB.prepare(
           `SELECT 1 FROM users WHERE email = ? LIMIT 1`
-        ).bind(email).first();
+        ).bind(normalizedEmail).first();
 
         if (existingUser) {
-          return new Response('email already exists', {
+          return new Response('registration failed', {
             status: 409,
             headers: {
               ...CORS_HEADERS,
@@ -130,7 +133,7 @@ export default {
         // 存储到数据库
         const result = await env.DB.prepare(
           `INSERT INTO users (email, salt, password) VALUES (?, ?, ?)`
-        ).bind(email, salt, hash).run();
+        ).bind(normalizedEmail, salt, hash).run();
 
         if (!result.success) {
           throw new Error('database insert failed');
@@ -146,18 +149,13 @@ export default {
       } catch (err: any) {
         console.error(`signup error: ${err.message}`, { stack: err.stack });
 
-        if (err.message.includes('UNIQUE constraint failed')) {
-          return new Response('email already exists', {
-            status: 409,
-            headers: {
-              ...CORS_HEADERS,
-              'Content-Type': 'text/plain'
-            }
-          });
-        }
+        // 错误信息脱敏
+        const message = err.message.includes('UNIQUE constraint failed')
+          ? 'registration failed'
+          : 'internal server error';
 
-        return new Response('server error', {
-          status: 500,
+        return new Response(message, {
+          status: err.message.includes('UNIQUE constraint failed') ? 409 : 500,
           headers: {
             ...CORS_HEADERS,
             'Content-Type': 'text/plain'
