@@ -1,5 +1,5 @@
 name = "qianyan-register"
-main = "src/signup.ts"
+main = "src/index.js"
 compatibility_date = "2024-07-30"
 
 # 替换弃用的 node_compat 参数
