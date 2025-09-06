@@ -27,13 +27,13 @@ export default {
 
     // 检查授权
     if (!await isAuthorized(request, env)) {
-      return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
+      return jsonResponse({ success: false, message: '未授权访问' }, 401);
     }
 
     // 只处理/auth路径的请求
     const url = new URL(request.url);
     if (url.pathname !== '/auth') {
-      return jsonResponse({ success: false, message: 'Not found' }, 404);
+      return jsonResponse({ success: false, message: '接口不存在' }, 404);
     }
 
     try {
@@ -48,11 +48,11 @@ export default {
         case 'DELETE':
           return await handleDeleteAccount(request, env);
         default:
-          return jsonResponse({ success: false, message: 'Method not allowed' }, 405);
+          return jsonResponse({ success: false, message: '不支持的请求方法' }, 405);
       }
     } catch (error) {
-      console.error('Error processing request:', error);
-      return jsonResponse({ success: false, message: 'Internal server error' }, 500);
+      console.error('处理请求时出错:', error);
+      return jsonResponse({ success: false, message: '服务器内部错误' }, 500);
     }
   },
 };
@@ -120,7 +120,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     if (!email || !password) {
       return jsonResponse({ 
         success: false, 
-        message: 'Email and password are required' 
+        message: '邮箱和密码为必填项' 
       }, 400);
     }
 
@@ -132,7 +132,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     if (!user) {
       return jsonResponse({ 
         success: false, 
-        message: 'Invalid email or password' 
+        message: '邮箱或密码错误' 
       }, 401);
     }
 
@@ -141,19 +141,19 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     if (hashedPassword !== user.password_hash) {
       return jsonResponse({ 
         success: false, 
-        message: 'Invalid email or password' 
+        message: '邮箱或密码错误' 
       }, 401);
     }
 
     return jsonResponse({ 
       success: true, 
-      message: 'Login successful' 
+      message: '登录成功' 
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('登录处理出错:', error);
     return jsonResponse({ 
       success: false, 
-      message: 'Failed to process login request' 
+      message: '处理登录请求时发生错误' 
     }, 500);
   }
 }
@@ -166,7 +166,7 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
     if (!email || !password) {
       return jsonResponse({ 
         success: false, 
-        message: 'Email and password are required' 
+        message: '邮箱和密码为必填项' 
       }, 400);
     }
 
@@ -175,7 +175,7 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
     if (!emailRegex.test(email)) {
       return jsonResponse({ 
         success: false, 
-        message: 'Invalid email format' 
+        message: '邮箱格式不正确' 
       }, 400);
     }
 
@@ -183,7 +183,7 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
     if (password.length < 6) {
       return jsonResponse({ 
         success: false, 
-        message: 'Password must be at least 6 characters long' 
+        message: '密码长度至少为6位' 
       }, 400);
     }
 
@@ -195,7 +195,7 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
     if (existingUser) {
       return jsonResponse({ 
         success: false, 
-        message: 'User already exists' 
+        message: '用户已存在' 
       }, 409);
     }
 
@@ -210,13 +210,13 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
 
     return jsonResponse({ 
       success: true, 
-      message: 'User created successfully' 
+      message: '用户创建成功' 
     }, 201);
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('注册处理出错:', error);
     return jsonResponse({ 
       success: false, 
-      message: 'Failed to create user' 
+      message: '创建用户时发生错误' 
     }, 500);
   }
 }
@@ -229,7 +229,7 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
     if (!email || !oldpwd || !newpwd) {
       return jsonResponse({ 
         success: false, 
-        message: 'Email, old password and new password are required' 
+        message: '邮箱、旧密码和新密码为必填项' 
       }, 400);
     }
 
@@ -237,7 +237,7 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
     if (newpwd.length < 6) {
       return jsonResponse({ 
         success: false, 
-        message: 'New password must be at least 6 characters long' 
+        message: '新密码长度至少为6位' 
       }, 400);
     }
 
@@ -246,11 +246,12 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
       'SELECT id, password_hash, salt FROM users WHERE email = ?'
     ).bind(email).first();
 
+    // 用户不存在或旧密码错误都返回401
     if (!user) {
       return jsonResponse({ 
         success: false, 
-        message: 'User not found' 
-      }, 404);
+        message: '邮箱或旧密码错误' 
+      }, 401);
     }
 
     // 验证旧密码
@@ -258,7 +259,7 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
     if (hashedOldPassword !== user.password_hash) {
       return jsonResponse({ 
         success: false, 
-        message: 'Invalid old password' 
+        message: '邮箱或旧密码错误' 
       }, 401);
     }
 
@@ -273,13 +274,13 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
 
     return jsonResponse({ 
       success: true, 
-      message: 'Password updated successfully' 
+      message: '密码更新成功' 
     });
   } catch (error) {
-    console.error('Update password error:', error);
+    console.error('密码修改处理出错:', error);
     return jsonResponse({ 
       success: false, 
-      message: 'Failed to update password' 
+      message: '更新密码时发生错误' 
     }, 500);
   }
 }
@@ -292,7 +293,7 @@ async function handleDeleteAccount(request: Request, env: Env): Promise<Response
     if (!email || !password) {
       return jsonResponse({ 
         success: false, 
-        message: 'Email and password are required' 
+        message: '邮箱和密码为必填项' 
       }, 400);
     }
 
@@ -304,7 +305,7 @@ async function handleDeleteAccount(request: Request, env: Env): Promise<Response
     if (!user) {
       return jsonResponse({ 
         success: false, 
-        message: 'User not found' 
+        message: '用户不存在' 
       }, 404);
     }
 
@@ -313,7 +314,7 @@ async function handleDeleteAccount(request: Request, env: Env): Promise<Response
     if (hashedPassword !== user.password_hash) {
       return jsonResponse({ 
         success: false, 
-        message: 'Invalid password' 
+        message: '密码错误' 
       }, 401);
     }
 
@@ -324,13 +325,13 @@ async function handleDeleteAccount(request: Request, env: Env): Promise<Response
 
     return jsonResponse({ 
       success: true, 
-      message: 'Account deleted successfully' 
+      message: '账户删除成功' 
     });
   } catch (error) {
-    console.error('Delete account error:', error);
+    console.error('账户删除处理出错:', error);
     return jsonResponse({ 
       success: false, 
-      message: 'Failed to delete account' 
+      message: '删除账户时发生错误' 
     }, 500);
   }
 }
