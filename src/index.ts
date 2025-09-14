@@ -3,6 +3,7 @@
 export interface Env {
   DB: D1Database;
   TOKEN: string;
+  RATE_LIMIT_KV: KVNamespace;
 }
 
 interface UserRequest {
@@ -95,6 +96,85 @@ function jsonResponse(data: ApiResponse, status: number = 200): Response {
   });
 }
 
+// 简单的哈希函数
+function simpleHash(str: string): string {
+  let hash = 0;
+  if (str.length === 0) return hash.toString();
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return Math.abs(hash).toString(16);
+}
+
+// 检查速率限制
+async function checkRateLimit(
+  request: Request, 
+  env: Env, 
+  email: string
+): Promise<{ allowed: boolean; remaining?: number }> {
+  try {
+    // 获取客户端信息
+    const ip = request.headers.get('CF-Connecting-IP') || 
+               request.headers.get('X-Forwarded-For') || 
+               'unknown';
+    const userAgent = request.headers.get('User-Agent') || 'unknown';
+    
+    // 生成复合标识符
+    const compositeStr = `${email}:${ip}:${userAgent}`;
+    const compositeHash = simpleHash(compositeStr);
+    const rateLimitKey = `rate_limit:${compositeHash}`;
+    
+    // 获取当前限制状态
+    const current = await env.RATE_LIMIT_KV.get(rateLimitKey);
+    const now = Date.now();
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    
+    if (!current) {
+      // 第一次请求，创建新记录
+      await env.RATE_LIMIT_KV.put(
+        rateLimitKey, 
+        JSON.stringify({ count: 1, firstRequest: now }),
+        { expirationTtl: 300 } // 5分钟过期
+      );
+      return { allowed: true, remaining: 49 };
+    }
+    
+    // 解析现有记录
+    const data = JSON.parse(current);
+    
+    if (data.firstRequest < fiveMinutesAgo) {
+      // 超过5分钟，重置计数
+      await env.RATE_LIMIT_KV.put(
+        rateLimitKey, 
+        JSON.stringify({ count: 1, firstRequest: now }),
+        { expirationTtl: 300 }
+      );
+      return { allowed: true, remaining: 49 };
+    }
+    
+    if (data.count >= 50) {
+      // 超过限制
+      return { allowed: false };
+    }
+    
+    // 增加计数
+    data.count++;
+    await env.RATE_LIMIT_KV.put(
+      rateLimitKey, 
+      JSON.stringify(data),
+      { expirationTtl: 300 }
+    );
+    
+    return { allowed: true, remaining: 50 - data.count };
+  } catch (error) {
+    console.error('速率限制检查错误:', error);
+    // 出错时允许请求通过，避免因速率限制系统故障导致服务不可用
+    return { allowed: true };
+  }
+}
+
 // 密码哈希函数
 async function hashPassword(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -122,6 +202,15 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
         success: false, 
         message: '邮箱和密码为必填项' 
       }, 400);
+    }
+
+    // 检查速率限制
+    const rateLimitCheck = await checkRateLimit(request, env, email);
+    if (!rateLimitCheck.allowed) {
+      return jsonResponse({ 
+        success: false, 
+        message: '请求过于频繁，请5分钟后再试' 
+      }, 429);
     }
 
     // 查询用户
@@ -168,6 +257,15 @@ async function handleSignup(request: Request, env: Env): Promise<Response> {
         success: false, 
         message: '邮箱和密码为必填项' 
       }, 400);
+    }
+
+    // 检查速率限制
+    const rateLimitCheck = await checkRateLimit(request, env, email);
+    if (!rateLimitCheck.allowed) {
+      return jsonResponse({ 
+        success: false, 
+        message: '请求过于频繁，请5分钟后再试' 
+      }, 429);
     }
 
     // 检查邮箱格式
@@ -233,6 +331,15 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
       }, 400);
     }
 
+    // 检查速率限制
+    const rateLimitCheck = await checkRateLimit(request, env, email);
+    if (!rateLimitCheck.allowed) {
+      return jsonResponse({ 
+        success: false, 
+        message: '请求过于频繁，请5分钟后再试' 
+      }, 429);
+    }
+
     // 检查新密码长度
     if (newpwd.length < 6) {
       return jsonResponse({ 
@@ -295,6 +402,15 @@ async function handleDeleteAccount(request: Request, env: Env): Promise<Response
         success: false, 
         message: '邮箱和密码为必填项' 
       }, 400);
+    }
+
+    // 检查速率限制
+    const rateLimitCheck = await checkRateLimit(request, env, email);
+    if (!rateLimitCheck.allowed) {
+      return jsonResponse({ 
+        success: false, 
+        message: '请求过于频繁，请5分钟后再试' 
+      }, 429);
     }
 
     // 查询用户
